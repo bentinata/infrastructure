@@ -2,19 +2,39 @@ import core = require('@aws-cdk/core');
 import codebuild = require('@aws-cdk/aws-codebuild');
 import ecr = require('@aws-cdk/aws-ecr');
 
+interface GitSourceProps {
+  readonly owner?: string;
+  readonly repo: string;
+  readonly branch?: string;
+}
+
+interface RegistryProps extends core.StackProps {
+  readonly gitSource: GitSourceProps;
+  readonly buildEnv: { [key: string]: string };
+}
+
 export class RegistryStack extends core.Stack {
-  constructor(scope: core.App, id: string, props?: core.StackProps) {
+  private readonly owner: string;
+  private readonly repo: string;
+  private readonly branch: string;
+  private readonly env: { [key: string]: string };
+
+  constructor(scope: core.App, id: string, props: RegistryProps) {
     super(scope, id, props);
 
-    const owner = 'evermos';
-    const repo = 'evermos-fe';
-    const name = 'evermos-frontend';
+    this.owner = props.gitSource.owner === undefined ? 'evermos' : props.gitSource.owner;
+    this.repo = props.gitSource.repo;
+    this.branch = props.gitSource.branch === undefined ? 'dev' : props.gitSource.branch;
+    this.env = props.buildEnv;
 
     const repository = new ecr.Repository(this, 'repository');
 
     const buildSpec = {
       docker: {
         version: 0.2,
+        env: {
+          'parameter-store': this.env,
+        },
         phases: {
           install: {
             'runtime-versions': {
@@ -38,11 +58,11 @@ export class RegistryStack extends core.Stack {
     };
 
     const source = codebuild.Source.gitHub({
-      owner,
-      repo,
+      owner: this.owner,
+      repo: this.repo,
       webhook: true,
       webhookFilters: [
-        codebuild.FilterGroup.inEventOf(codebuild.EventAction.PUSH).andBranchIs('master'),
+        codebuild.FilterGroup.inEventOf(codebuild.EventAction.PUSH).andBranchIs(this.branch),
       ],
     });
 
@@ -58,5 +78,3 @@ export class RegistryStack extends core.Stack {
     repository.grantPullPush(project.role!);
   }
 }
-
-
